@@ -1,0 +1,27 @@
+name: dl
+channels:
+  - https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main/
+  - https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/conda-forge/
+  - defaults
+dependencies:
+  - python=3.12
+  - pip
+  - pip:
+      - torch
+      - torchvision
+      - torchaudio
+      - numpy
+      - pandas
+      - matplotlib
+      - seaborn
+      - scipy
+      - jupyterlab
+      - notebook
+      - ipywidgets
+      - scikit-learn
+      - tensorboard
+      - opencv-python
+      - scikit-image
+      - tqdm
+      - requests
+      - trackpy
