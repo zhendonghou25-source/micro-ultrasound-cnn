@@ -14,7 +14,7 @@ from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
 
 from us_imaging.models.rf_dataset import RFPatchDataset, create_dataloaders
-from us_imaging.models.rf_autoencoder import RFAutoencoder
+from us_imaging.models.rf_autoencoder import RFAutoencoder, RFAutoencoderV2
 from us_imaging.simulation.physics import generate_training_samples
 
 
@@ -84,10 +84,10 @@ def eval_epoch(model, loader, device, lambda_freq):
     return total_loss / n_batches, total_mse / n_batches, total_fft / n_batches
 
 
-def main(latent_dim: int = 64):
+def main(latent_dim: int = 64, model_version: str = "v2"):
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Device: {device}")
-    print(f"Latent dim: {latent_dim}")
+    print(f"Model: {model_version.upper()}, Latent dim: {latent_dim}")
 
     # 超参数
     patch_len = 256
@@ -113,14 +113,18 @@ def main(latent_dim: int = 64):
     print(f"Train batches: {len(train_loader)}, Test batches: {len(test_loader)}")
 
     # 模型
-    model = RFAutoencoder(input_len=patch_len, latent_dim=latent_dim).to(device)
+    if model_version == "v2":
+        model = RFAutoencoderV2(input_len=patch_len, latent_dim=latent_dim).to(device)
+    else:
+        model = RFAutoencoder(input_len=patch_len, latent_dim=latent_dim).to(device)
     print(f"Model parameters: {model.count_parameters():,}")
 
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=n_epochs)
 
     # TensorBoard
-    tag = f"L{latent_dim}"
+    vtag = "v2" if model_version == "v2" else "v1"
+    tag = f"{vtag}_L{latent_dim}"
     log_dir = f"runs/rf_ae_{tag}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     writer = SummaryWriter(log_dir=log_dir)
 
@@ -167,14 +171,14 @@ def main(latent_dim: int = 64):
                 "test_loss": test_loss,
                 "test_mse": test_mse,
                 "test_fft": test_fft,
-            }, os.path.join(save_dir, f"best_model_L{latent_dim}.pt"))
+            }, os.path.join(save_dir, f"best_{tag}.pt"))
 
     # 保存最终模型
     torch.save({
         "epoch": n_epochs,
         "latent_dim": latent_dim,
         "model_state_dict": model.state_dict(),
-    }, os.path.join(save_dir, f"final_model_L{latent_dim}.pt"))
+    }, os.path.join(save_dir, f"final_{tag}.pt"))
 
     writer.close()
     print(f"\nTraining complete. Best test loss: {best_test_loss:.4f}")
@@ -193,5 +197,6 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("--latent-dim", type=int, default=64)
+    parser.add_argument("--model-version", type=str, default="v2", choices=["v1", "v2"])
     args = parser.parse_args()
-    main(latent_dim=args.latent_dim)
+    main(latent_dim=args.latent_dim, model_version=args.model_version)
