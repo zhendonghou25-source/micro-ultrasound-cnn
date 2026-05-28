@@ -84,13 +84,13 @@ def eval_epoch(model, loader, device, lambda_freq):
     return total_loss / n_batches, total_mse / n_batches, total_fft / n_batches
 
 
-def main():
+def main(latent_dim: int = 64):
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Device: {device}")
+    print(f"Latent dim: {latent_dim}")
 
     # 超参数
     patch_len = 256
-    latent_dim = 128
     batch_size = 64 if device == "cuda" else 32
     n_epochs = 50
     lr = 1e-3
@@ -120,7 +120,8 @@ def main():
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=n_epochs)
 
     # TensorBoard
-    log_dir = f"runs/rf_autoencoder_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    tag = f"L{latent_dim}"
+    log_dir = f"runs/rf_ae_{tag}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     writer = SummaryWriter(log_dir=log_dir)
 
     # 保存路径
@@ -139,13 +140,13 @@ def main():
         scheduler.step()
 
         # TensorBoard
-        writer.add_scalars("Loss", {
+        writer.add_scalars(f"Loss/{tag}", {
             "train": train_loss, "test": test_loss,
         }, epoch)
-        writer.add_scalars("MSE", {
+        writer.add_scalars(f"MSE/{tag}", {
             "train": train_mse, "test": test_mse,
         }, epoch)
-        writer.add_scalars("FFT_Loss", {
+        writer.add_scalars(f"FFT_Loss/{tag}", {
             "train": train_fft, "test": test_fft,
         }, epoch)
         writer.add_scalar("LR", scheduler.get_last_lr()[0], epoch)
@@ -160,18 +161,20 @@ def main():
             best_test_loss = test_loss
             torch.save({
                 "epoch": epoch,
+                "latent_dim": latent_dim,
                 "model_state_dict": model.state_dict(),
                 "optimizer_state_dict": optimizer.state_dict(),
                 "test_loss": test_loss,
                 "test_mse": test_mse,
                 "test_fft": test_fft,
-            }, os.path.join(save_dir, "best_model.pt"))
+            }, os.path.join(save_dir, f"best_model_L{latent_dim}.pt"))
 
     # 保存最终模型
     torch.save({
         "epoch": n_epochs,
+        "latent_dim": latent_dim,
         "model_state_dict": model.state_dict(),
-    }, os.path.join(save_dir, "final_model.pt"))
+    }, os.path.join(save_dir, f"final_model_L{latent_dim}.pt"))
 
     writer.close()
     print(f"\nTraining complete. Best test loss: {best_test_loss:.4f}")
@@ -187,4 +190,8 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--latent-dim", type=int, default=64)
+    args = parser.parse_args()
+    main(latent_dim=args.latent_dim)

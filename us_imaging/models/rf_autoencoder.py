@@ -15,7 +15,7 @@ class RFAutoencoder(nn.Module):
     Decoder: FC + 3 层 ConvTranspose1d + BN + ReLU → Tanh
     """
 
-    def __init__(self, input_len: int = 256, latent_dim: int = 128):
+    def __init__(self, input_len: int = 256, latent_dim: int = 64):
         super().__init__()
         self.input_len = input_len
         self.latent_dim = latent_dim
