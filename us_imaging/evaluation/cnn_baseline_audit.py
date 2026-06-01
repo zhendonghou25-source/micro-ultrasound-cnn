@@ -19,6 +19,9 @@ import torch
 from us_imaging.models.rf_autoencoder import MODEL_REGISTRY, build_rf_autoencoder
 
 
+CNN_MODEL_VERSIONS = ("v1", "v2", "v3", "v4", "v5", "v6")
+
+
 @dataclass(frozen=True)
 class LayerSpec:
     kernel_size: int
@@ -104,7 +107,7 @@ def architecture_audit_rows(
     rows = []
     depth_per_sample_m = sound_speed_m_s / (2 * fs_hz)
 
-    for version in sorted(MODEL_REGISTRY):
+    for version in CNN_MODEL_VERSIONS:
         model_channels = 1 if version == "v1" else in_channels
         model = build_rf_autoencoder(
             version,
@@ -194,7 +197,7 @@ def main() -> None:
     parser.add_argument("--in-channels", type=int, default=3)
     parser.add_argument("--fs-hz", type=float, default=40e6)
     parser.add_argument("--sound-speed", type=float, default=1540.0)
-    parser.add_argument("--kernel-version", default="v6", choices=sorted(MODEL_REGISTRY))
+    parser.add_argument("--kernel-version", default="v6", choices=CNN_MODEL_VERSIONS)
     args = parser.parse_args()
 
     arch_rows = architecture_audit_rows(
