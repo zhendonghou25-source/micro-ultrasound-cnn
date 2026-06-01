@@ -21,6 +21,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from us_imaging.models.rf_dataset import create_dataloaders
 from us_imaging.models.rf_autoencoder import MODEL_REGISTRY, build_rf_autoencoder
 from us_imaging.simulation.acquire import TransducerArray, array_engineering_metrics
+from us_imaging.simulation.micro_array import MICRO_ARRAY_TEMPLATES
 from us_imaging.simulation.physics import generate_training_samples
 
 
@@ -113,8 +114,10 @@ def eval_epoch(model, loader, device, lambda_freq, lambda_coherence):
     return {key: value / n_batches for key, value in totals.items()}
 
 
-def _print_array_metrics(patches: np.ndarray | None = None) -> None:
-    metrics = array_engineering_metrics(TransducerArray(), patches=patches)
+def _print_array_metrics(metrics: dict | None = None,
+                         patches: np.ndarray | None = None) -> dict:
+    if metrics is None:
+        metrics = array_engineering_metrics(TransducerArray(), patches=patches)
     print("Array engineering metrics:")
     print(f"  wavelength: {metrics['wavelength_mm']:.3f} mm")
     print(f"  pitch/lambda: {metrics['pitch_over_lambda']:.3f}")
@@ -127,13 +130,16 @@ def _print_array_metrics(patches: np.ndarray | None = None) -> None:
             f"  cross-beam corr: {metrics['cross_beam_corr_mean']:.3f} "
             f"+/- {metrics['cross_beam_corr_std']:.3f}"
         )
+    if "array_type" in metrics:
+        print(f"  array type: {metrics['array_type']}, Q={metrics['q_factor']:.3f}")
+    return metrics
 
 
 def _load_or_generate_multibeam_data(
     in_channels: int,
     patch_len: int,
     n_phantoms: int,
-) -> tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, dict]:
     from us_imaging.simulation.multibeam_data import generate_multibeam_training_data
 
     data_dir = "data"
@@ -143,7 +149,9 @@ def _load_or_generate_multibeam_data(
 
     if os.path.exists(patches_path) and os.path.exists(labels_path):
         print(f"  Loading pre-generated data from {data_dir}/")
-        return np.load(patches_path), np.load(labels_path)
+        patches = np.load(patches_path)
+        labels = np.load(labels_path)
+        return patches, labels, array_engineering_metrics(TransducerArray(), patches=patches)
 
     patches, labels = generate_multibeam_training_data(
         n_phantoms=n_phantoms,
@@ -156,7 +164,46 @@ def _load_or_generate_multibeam_data(
     os.makedirs(data_dir, exist_ok=True)
     np.save(patches_path, patches)
     np.save(labels_path, labels)
-    return patches, labels
+    return patches, labels, array_engineering_metrics(TransducerArray(), patches=patches)
+
+
+def _load_or_generate_parameterized_multibeam_data(
+    in_channels: int,
+    patch_len: int,
+    n_phantoms: int,
+    micro_array_template: str,
+) -> tuple[np.ndarray, np.ndarray, dict]:
+    from us_imaging.simulation.micro_array import (
+        generate_parameterized_multibeam_data,
+        get_micro_array_config,
+        micro_array_metrics,
+    )
+
+    data_dir = "data"
+    cache_tag = f"{micro_array_template}_{in_channels}ch_{n_phantoms}phantoms"
+    patches_path = os.path.join(data_dir, f"micro_array_train_{cache_tag}_patches.npy")
+    labels_path = os.path.join(data_dir, f"micro_array_train_{cache_tag}_labels.npy")
+    config = get_micro_array_config(micro_array_template)
+
+    if os.path.exists(patches_path) and os.path.exists(labels_path):
+        print(f"  Loading parameterized micro-array data from {data_dir}/")
+        patches = np.load(patches_path)
+        labels = np.load(labels_path)
+        return patches, labels, micro_array_metrics(config, patches=patches)
+
+    patches, labels, metrics = generate_parameterized_multibeam_data(
+        n_phantoms=n_phantoms,
+        config=config,
+        n_point_per_phantom=5,
+        n_dense=200,
+        n_beams=in_channels,
+        patch_len=patch_len,
+        base_seed=42,
+    )
+    os.makedirs(data_dir, exist_ok=True)
+    np.save(patches_path, patches)
+    np.save(labels_path, labels)
+    return patches, labels, metrics
 
 
 def main(
@@ -168,6 +215,7 @@ def main(
     n_phantoms: int = 300,
     lambda_freq: float = 0.1,
     lambda_coherence: float | None = None,
+    micro_array_template: str | None = None,
 ):
     device = "cuda" if torch.cuda.is_available() else "cpu"
     patch_len = 256
@@ -186,14 +234,22 @@ def main(
 
     if in_channels > 1:
         print(f"Generating multi-beam ({in_channels}-channel) training data...")
-        patches, labels = _load_or_generate_multibeam_data(
-            in_channels=in_channels,
-            patch_len=patch_len,
-            n_phantoms=n_phantoms,
-        )
+        if micro_array_template is None:
+            patches, labels, array_metrics = _load_or_generate_multibeam_data(
+                in_channels=in_channels,
+                patch_len=patch_len,
+                n_phantoms=n_phantoms,
+            )
+        else:
+            patches, labels, array_metrics = _load_or_generate_parameterized_multibeam_data(
+                in_channels=in_channels,
+                patch_len=patch_len,
+                n_phantoms=n_phantoms,
+                micro_array_template=micro_array_template,
+            )
         print(f"  Patches shape: {patches.shape}, Labels: {labels.shape}")
         print(f"  Class distribution: pos={labels.sum()}, neg={(1 - labels).sum()}")
-        _print_array_metrics(patches)
+        array_metrics = _print_array_metrics(array_metrics, patches)
     else:
         print(f"Generating {n_per_class * 3} training samples...")
         patches, labels = generate_training_samples(
@@ -206,7 +262,7 @@ def main(
         )
         print(f"Patches shape: {patches.shape}, Labels: {labels.shape}")
         print(f"Class distribution: {np.bincount(labels)}")
-        _print_array_metrics()
+        array_metrics = _print_array_metrics()
 
     train_loader, test_loader = create_dataloaders(
         patches,
@@ -293,6 +349,7 @@ def main(
                     "model_version": model_version,
                     "lambda_freq": lambda_freq,
                     "lambda_coherence": lambda_coherence,
+                    "array_metrics": array_metrics,
                     "model_state_dict": model.state_dict(),
                     "optimizer_state_dict": optimizer.state_dict(),
                     "test_loss": test_metrics["loss"],
@@ -311,6 +368,7 @@ def main(
             "model_version": model_version,
             "lambda_freq": lambda_freq,
             "lambda_coherence": lambda_coherence,
+            "array_metrics": array_metrics,
             "model_state_dict": model.state_dict(),
         },
         os.path.join(save_dir, f"final_{tag}.pt"),
@@ -343,6 +401,8 @@ if __name__ == "__main__":
     parser.add_argument("--n-phantoms", type=int, default=300)
     parser.add_argument("--lambda-freq", type=float, default=0.1)
     parser.add_argument("--lambda-coherence", type=float, default=None)
+    parser.add_argument("--micro-array-template", type=str, default=None,
+                        choices=sorted(MICRO_ARRAY_TEMPLATES))
     args = parser.parse_args()
 
     main(
@@ -354,4 +414,5 @@ if __name__ == "__main__":
         n_phantoms=args.n_phantoms,
         lambda_freq=args.lambda_freq,
         lambda_coherence=args.lambda_coherence,
+        micro_array_template=args.micro_array_template,
     )
