@@ -10,7 +10,7 @@ from .rf_autoencoder import (
     RFAutoencoderV6,
     build_rf_autoencoder,
 )
-from .rf_transformer import RFHybridTransformerAE
+from .rf_transformer import RFHybridTransformerAE, RFTransformerAutoencoder
 
 __all__ = [
     "MODEL_REGISTRY",
@@ -21,5 +21,6 @@ __all__ = [
     "RFAutoencoderV5",
     "RFAutoencoderV6",
     "RFHybridTransformerAE",
+    "RFTransformerAutoencoder",
     "build_rf_autoencoder",
 ]

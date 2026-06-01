@@ -7,7 +7,7 @@ V2: Strided Conv1d → BN → LeakyReLU (新版，可学习下采样，更高效
 import torch
 import torch.nn as nn
 
-from us_imaging.models.rf_transformer import RFHybridTransformerAE
+from us_imaging.models.rf_transformer import RFHybridTransformerAE, RFTransformerAutoencoder
 
 
 # ============================================================
@@ -605,6 +605,7 @@ class RFAutoencoderV6(nn.Module):
 
 MODEL_REGISTRY = {
     "hybrid": RFHybridTransformerAE,
+    "transformer": RFTransformerAutoencoder,
     "v1": RFAutoencoder,
     "v2": RFAutoencoderV2,
     "v3": RFAutoencoderV3,
