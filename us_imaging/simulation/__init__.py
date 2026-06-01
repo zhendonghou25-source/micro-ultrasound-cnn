@@ -14,6 +14,7 @@ from .micro_array import (
 
 __all__ = [
     "MICRO_ARRAY_TEMPLATES",
+    "CompleteSimulationConfig",
     "MicroArrayConfig",
     "TransducerArray",
     "apply_receive_chain",
@@ -23,4 +24,18 @@ __all__ = [
     "micro_array_metrics",
     "parameterized_plane_wave_rf",
     "sample_element_response",
+    "run_complete_simulation",
+    "save_complete_simulation_report",
 ]
+
+
+def __getattr__(name):
+    if name in {
+        "CompleteSimulationConfig",
+        "run_complete_simulation",
+        "save_complete_simulation_report",
+    }:
+        from . import complete_simulation
+
+        return getattr(complete_simulation, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
